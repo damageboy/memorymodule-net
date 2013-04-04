@@ -1696,6 +1696,11 @@ namespace MemoryModule
   [StructLayout(LayoutKind.Sequential)]
   public struct IMAGE_OPTIONAL_HEADER64
   {
+    static unsafe IMAGE_OPTIONAL_HEADER64()
+    {
+      if (sizeof(IMAGE_DATA_DIRECTORY) * 16 != SIZEOF_DD)
+        throw new BadImageFormatException("IMAGE_OPTIONAL_HEADER64 was compiled improperly");
+    }
     /// WORD->unsigned short
     public ushort Magic;
 
@@ -1784,8 +1789,18 @@ namespace MemoryModule
     public uint NumberOfRvaAndSizes;
 
     /// IMAGE_DATA_DIRECTORY[16]
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16, ArraySubType = UnmanagedType.Struct)] public
-      IMAGE_DATA_DIRECTORY[] DataDirectory;
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
+    //public IMAGE_DATA_DIRECTORY[] DataDirectory;
+    private const int SIZEOF_DD = 16 * 8;
+    private unsafe fixed byte _DataDirectory[SIZEOF_DD];
+    public unsafe IMAGE_DATA_DIRECTORY* DataDirectory
+    {
+      get {
+        fixed (byte *dd = _DataDirectory) {
+          return (IMAGE_DATA_DIRECTORY*)dd;
+        }
+      }
+    }
   }
 
   [StructLayout(LayoutKind.Sequential)]
@@ -2095,7 +2110,7 @@ namespace MemoryModule
   }
 
   [StructLayout(LayoutKind.Sequential)]
-  public struct IMAGE_DATA_DIRECTORY
+  public unsafe struct IMAGE_DATA_DIRECTORY
   {
     /// DWORD->unsigned int
     public uint VirtualAddress;
@@ -2461,7 +2476,7 @@ namespace MemoryModule
   }
 
   [StructLayout(LayoutKind.Sequential)]
-  public struct IMAGE_DOS_HEADER
+  public unsafe struct IMAGE_DOS_HEADER
   {
     /// WORD->unsigned short
     public ushort e_magic;
@@ -2506,7 +2521,7 @@ namespace MemoryModule
     public ushort e_ovno;
 
     /// WORD[4]
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4, ArraySubType = UnmanagedType.U2)] public ushort[] e_res;
+    public fixed ushort e_res[4];
 
     /// WORD->unsigned short
     public ushort e_oemid;
@@ -2515,7 +2530,7 @@ namespace MemoryModule
     public ushort e_oeminfo;
 
     /// WORD[10]
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 10, ArraySubType = UnmanagedType.U2)] public ushort[] e_res2;
+    public fixed ushort e_res2[10];
 
     /// LONG->int
     public int e_lfanew;
