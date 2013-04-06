@@ -2,3 +2,5 @@ obj
 *.DotSettings
 *.suo
 bin
+SampleDLL/Win32
+SampleDLL/x64

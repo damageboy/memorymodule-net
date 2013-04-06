@@ -45,8 +45,8 @@ namespace MemoryModule
     ///flAllocationType: DWORD->unsigned int
     ///flProtect: DWORD->unsigned int
     [System.Runtime.InteropServices.DllImportAttribute("kernel32.dll", EntryPoint = "VirtualAlloc")]
-    public unsafe static extern System.IntPtr VirtualAlloc(
-      byte *lpAddress, uint dwSize, uint flAllocationType, uint flProtect);
+    public unsafe static extern void *VirtualAlloc(
+      void *lpAddress, uint dwSize, uint flAllocationType, uint flProtect);
 
 
     /// Return Type: LPVOID->void*
@@ -56,9 +56,30 @@ namespace MemoryModule
     ///flAllocationType: DWORD->unsigned int
     ///flProtect: DWORD->unsigned int
     [DllImport("kernel32.dll", EntryPoint = "VirtualAllocEx")]
-    public unsafe static extern byte *VirtualAllocEx(
-      byte *hProcess, 
-      byte *lpAddress, 
+    public unsafe static extern void *VirtualAllocEx(
+      IntPtr hProcess, 
+      void *lpAddress, 
       uint dwSize, uint flAllocationType, uint flProtect);
+
+    /// Return Type: BOOL->int
+    ///hProcess: HANDLE->void*
+    ///lpAddress: LPVOID->void*
+    ///dwSize: SIZE_T->ULONG_PTR->unsigned int
+    ///dwFreeType: DWORD->unsigned int
+    [System.Runtime.InteropServices.DllImportAttribute("kernel32.dll", EntryPoint = "VirtualFreeEx")]
+    public unsafe static extern bool VirtualFreeEx(
+      System.IntPtr hProcess, 
+      void *lpAddress, uint dwSize, uint dwFreeType);
+
+
+    /// Return Type: BOOL->int
+    ///lpAddress: LPVOID->void*
+    ///dwSize: SIZE_T->ULONG_PTR->unsigned int
+    ///dwFreeType: DWORD->unsigned int
+    [System.Runtime.InteropServices.DllImportAttribute("kernel32.dll", EntryPoint = "VirtualFree")]
+    public unsafe static extern bool VirtualFree(
+      void *lpAddress, uint dwSize, uint dwFreeType);
+
+
   }
 }
