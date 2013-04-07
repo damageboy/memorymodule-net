@@ -18,6 +18,13 @@ namespace LoaderSample
       var gch = GCHandle.Alloc(dllBytes, GCHandleType.Pinned);
       var dp = (byte *) gch.AddrOfPinnedObject().ToPointer();
 
+      MemoryModule.MemoryModule.DefaultResolverChain = new List<IModuleResolver>
+      {
+        new EmbeddedResourceResolver()
+      };
+
+
+
       var mm = MemoryModule.MemoryModule.Load(dp, null);
     }
   }

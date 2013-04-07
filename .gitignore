@@ -1,6 +1,7 @@
 obj
 *.DotSettings
 *.suo
+*.sdf
 bin
 SampleDLL/Win32
 SampleDLL/x64

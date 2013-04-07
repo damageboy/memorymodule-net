@@ -40,6 +40,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="EmbeddedResourceResolver.cs" />
     <Compile Include="Mem.cs" />
     <Compile Include="MemoryModule.cs" />
     <Compile Include="ImageHeaders.cs" />

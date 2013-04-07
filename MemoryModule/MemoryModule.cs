@@ -7,14 +7,46 @@ using System.Threading.Tasks;
 
 namespace MemoryModule
 {
+  public enum ArchType
+  {
+    x86,
+    x64,
+    ARM,
+  }
+  
+  public interface IModuleResolver
+  {
+    unsafe void *Load(string moduleName, string loaderModule, ArchType arch );
+    unsafe void Free(void *module);
+  }
+
+
   public class MemoryModule
   {
+    #region Global Loader/Resoolver State
+    public static IList<IModuleResolver> DefaultResolverChain { get; set; }
+    public static IList<MemoryModule> AllLoadedModules;
+    #endregion
+
+
     private unsafe byte* codeBase;
-    private int numModules;
+    
     private bool initialized;
-    private object modules;
+    public IList<MemoryModule> _modules { get; set; }
+    public static IList<IModuleResolver> _resolvers { get; set; }
+    
     private object userData;
     private unsafe IMAGE_NT_HEADERS* headers;
+
+    IModuleResolver _resolver;
+
+
+
+    public MemoryModule()
+    {
+      _resolvers = DefaultResolverChain;
+    }
+
     public static unsafe MemoryModule Load(byte* data, object userData)
     {
       var dos_header = (IMAGE_DOS_HEADER*)data;
@@ -42,10 +74,10 @@ namespace MemoryModule
         if (code == null)
           throw new OutOfMemoryException("trying to virtual-alloc");
       }
-      MemoryModule result;
+      MemoryModule module;
       try
       {
-        result = new MemoryModule();
+        module = new MemoryModule();
       }
       catch
       {
@@ -54,51 +86,35 @@ namespace MemoryModule
       }
       try
       {
-        result.codeBase = code;
-        result.numModules = 0;
-        result.modules = null;
-        result.initialized = false;
-        result.userData = userData;
+        module.codeBase = code;
+        module._modules = new List<MemoryModule>();
+        module.initialized = false;
+        module.userData = userData;
 
-        // commit memory for headers
-        var headers = (byte*)Win32.VirtualAlloc(code,
-          old_header->OptionalHeader.SizeOfHeaders,
-          Win32.MEM_COMMIT, Win32.PAGE_READWRITE);
-
-        // copy PE header to code
-        Mem.Cpy((byte*)dos_header, (byte*)headers,
-          (int)(dos_header->e_lfanew + old_header->OptionalHeader.SizeOfHeaders));
-        result.headers = (IMAGE_NT_HEADERS*)&(headers[dos_header->e_lfanew]);
-
-        // update position
-        result.headers->OptionalHeader.ImageBase = new IntPtr(code);
+        module.CopyHeaders(dos_header, old_header, code);
 
         // copy sections from DLL file block to new memory location
-        CopySections(data, old_header, result);
+        module.CopySections(data, old_header);
 
         // adjust base address of imported data
         var locationDelta = (IntPtr)(code - (byte*)old_header->OptionalHeader.ImageBase.ToPointer());
         if (locationDelta != IntPtr.Zero)
-        {
-          PerformBaseRelocation(result, locationDelta);
-        }
+          module.PerformBaseRelocation(locationDelta);
 
         // load required dlls and adjust function table of imports
-        if (!BuildImportTable(result))
-        {
+        if (!module.BuildImportTable())
           throw new Exception("Failed to build import table");
-        }
 
         // mark memory pages depending on section headers and release
         // sections that are marked as "discardable"
-        FinalizeSections(result);
+        FinalizeSections(module);
 
         // get entry point of loaded library
-        if (result.headers->OptionalHeader.AddressOfEntryPoint != 0)
+        if (module.headers->OptionalHeader.AddressOfEntryPoint != 0)
         {
           var dllEntry = (DllEntryDelegate)
             Marshal.GetDelegateForFunctionPointer(
-            new IntPtr(code + result.headers->OptionalHeader.AddressOfEntryPoint),
+            new IntPtr(code + module.headers->OptionalHeader.AddressOfEntryPoint),
             typeof(DllEntryDelegate));
           // notify library about attaching to process
           var successfull = dllEntry(code, NativeConstants.DLL_PROCESS_ATTACH, null);
@@ -106,17 +122,33 @@ namespace MemoryModule
           {
             throw new Exception("Dll initialization faild");
           }
-          result.initialized = true;
+          module.initialized = true;
         }
 
-        return result;
+        return module;
       }
       catch
       {
-        Free(result);
+        Free(module);
         throw;
       }
-      return null;
+    }
+
+    unsafe private void CopyHeaders(IMAGE_DOS_HEADER* dos_header, IMAGE_NT_HEADERS* old_header, byte* code)
+    {
+
+      // commit memory for headers
+      var headers = (byte*)Win32.VirtualAlloc(code,
+        old_header->OptionalHeader.SizeOfHeaders,
+        Win32.MEM_COMMIT, Win32.PAGE_READWRITE);
+
+      // copy PE header to code
+      Mem.Cpy((byte*)dos_header, (byte*)headers,
+        (int)(dos_header->e_lfanew + old_header->OptionalHeader.SizeOfHeaders));
+      this.headers = (IMAGE_NT_HEADERS*)&(headers[dos_header->e_lfanew]);
+
+      // update position
+      this.headers->OptionalHeader.ImageBase = new IntPtr(code);
     }
 
     private static void Free(MemoryModule result)
@@ -125,9 +157,56 @@ namespace MemoryModule
     }
     private unsafe delegate bool DllEntryDelegate(byte* hInstance, uint reason, void* reserved);
 
-    private static void PerformBaseRelocation(MemoryModule result, IntPtr locationDelta)
+    private unsafe IMAGE_DATA_DIRECTORY* GetHeaderDictionary(int idx)
     {
-      throw new NotImplementedException();
+      return &headers->OptionalHeader.DataDirectory[idx];
+    }
+    private unsafe void PerformBaseRelocation(IntPtr delta)
+    {
+      IMAGE_DATA_DIRECTORY *directory = GetHeaderDictionary(NativeConstants.IMAGE_DIRECTORY_ENTRY_BASERELOC);
+      if (directory->Size > 0) {
+        IMAGE_BASE_RELOCATION *relocation = (IMAGE_BASE_RELOCATION *) (codeBase + directory->VirtualAddress);
+        for (; relocation->VirtualAddress > 0; ) {
+            byte *dest = codeBase + relocation->VirtualAddress;
+            ushort* relInfo = (ushort*)((byte*)relocation + NativeConstants.IMAGE_SIZEOF_BASE_RELOCATION);
+            for (var i = 0; i < ((relocation->SizeOfBlock - NativeConstants.IMAGE_SIZEOF_BASE_RELOCATION) / 2); i++, relInfo++)
+            {
+                int *patchAddrHL;
+                long *patchAddr64;
+                int type, offset;
+
+                // the upper 4 bits define the type of relocation
+                type = *relInfo >> 12;
+                // the lower 12 bits define the offset
+                offset = *relInfo & 0xfff;
+                
+                switch (type)
+                {
+                  case NativeConstants.IMAGE_REL_BASED_ABSOLUTE:
+                    // skip relocation
+                    break;
+
+                  case NativeConstants.IMAGE_REL_BASED_HIGHLOW:
+                    // change complete 32 bit address
+                    patchAddrHL = (int *) (dest + offset);
+                    *patchAddrHL += (int) delta;
+                    break;
+                
+                case NativeConstants.IMAGE_REL_BASED_DIR64:
+                    patchAddr64 = (long *) (dest + offset);
+                    *patchAddr64 += (long) delta;
+                    break;
+
+                  default:
+                    //printf("Unknown relocation: %d\n", type);
+                    break;
+                }
+            }
+
+            // advance to next relocation block
+            relocation = (IMAGE_BASE_RELOCATION *) (((char *) relocation) + relocation->SizeOfBlock);
+        }
+      }
     }
 
     private static void FinalizeSections(MemoryModule result)
@@ -135,19 +214,111 @@ namespace MemoryModule
       throw new NotImplementedException();
     }
 
-    private static bool BuildImportTable(MemoryModule result)
+    private unsafe MemoryModule LoadDependancy(string name, string loaderName, object userData)
     {
-      throw new NotImplementedException();
+      byte *code = null;
+      IModuleResolver lastResolver;
+      foreach (var r in _resolvers)
+      {
+        lastResolver = r;
+        if ((code = (byte*)r.Load(name, loaderName, GetCurrentArch())) != null)
+          break;
+      }
+
+      // If any resolver was successfull, we try to load the module internally
+      if (code != null)
+      {
+        var mm = new MemoryModule();
+        mm._resolver = lastResolver;
+        mm.Load(code);
+        return mm;
+      }
+      else
+      {
+        // Last attmept, let's try the system resolver
+        
+        // Wrap into an IModuleLoader
+
+        return new SystemModuleLoader(Win32.LoadLibrary(name));
+      }
+
+      throw new Exception("Failed to load the " + name + " module");
+        
     }
 
-    private static unsafe void CopySections(byte* data, IMAGE_NT_HEADERS* old_headers, MemoryModule module)
+    private ArchType GetCurrentArch()
+    {
+      if (IntPtr.Size == 4)
+        return ArchType.x86;
+      else
+        return ArchType.x64;
+    }
+
+    private unsafe bool BuildImportTable()
+    {
+    bool result=true;
+    //HCUSTOMMODULE *tmp;
+
+    IMAGE_DATA_DIRECTORY *directory = GetHeaderDictionary(NativeConstants.IMAGE_DIRECTORY_ENTRY_IMPORT);
+    if (directory->Size > 0) {
+        IMAGE_IMPORT_DESCRIPTOR *importDesc = (IMAGE_IMPORT_DESCRIPTOR *) (codeBase + directory->VirtualAddress);
+        for (; /*!IsBadReadPtr(importDesc, sizeof(IMAGE_IMPORT_DESCRIPTOR)) && */ importDesc->Name != 0; importDesc++) {
+            byte *thunkRef;
+            byte *funcRef;
+            var namePtr = (sbyte *) (codeBase + importDesc->Name);
+
+            var handle = LoadDependancy(new string(namePtr, 0, String.Length(namePtr)), this.Name, userdata);
+
+            tmp = (HCUSTOMMODULE *) realloc(modules, (module->numModules+1)*(sizeof(HCUSTOMMODULE)));
+            if (tmp == NULL) {
+                module->freeLibrary(handle, module->userdata);
+                SetLastError(ERROR_OUTOFMEMORY);
+                result = 0;
+                break;
+            }
+            modules = tmp;
+
+            modules[numModules++] = handle;
+            if (importDesc->OriginalFirstThunk) {
+                thunkRef = (byte *) (codeBase + importDesc->OriginalFirstThunk);
+                funcRef = (byte *) (codeBase + importDesc->FirstThunk);
+            } else {
+                // no hint table
+                thunkRef = (byte *) (codeBase + importDesc->FirstThunk);
+                funcRef = (byte *) (codeBase + importDesc->FirstThunk);
+            }
+            for (; *thunkRef; thunkRef++, funcRef++) {
+              if (IMAGE_SNAP_BY_ORDINAL(*thunkRef)) {
+                *funcRef = getProcAddress(handle, (LPCSTR)IMAGE_ORDINAL(*thunkRef), userdata);
+              }
+              else {
+                PIMAGE_IMPORT_BY_NAME thunkData = (PIMAGE_IMPORT_BY_NAME)(codeBase + (*thunkRef));
+                *funcRef = getProcAddress(handle, (LPCSTR) & thunkData->Name, userdata);
+              }
+              if (*funcRef == 0) {
+                result = 0;
+                break;
+              }
+            }
+
+            if (!result) {
+                module->freeLibrary(handle, module->userdata);
+                SetLastError(ERROR_PROC_NOT_FOUND);
+                break;
+            }
+        }
+    }
+
+    return result;
+    }
+
+    private unsafe void CopySections(byte* data, IMAGE_NT_HEADERS* old_headers)
     {
       int i;
       uint size;
-      byte *codeBase = module.codeBase;
       byte *dest;
-      var section = GetFirstSection(module.headers);
-      for (i=0; i< module.headers->FileHeader.NumberOfSections; i++, section++) {
+      var section = GetFirstSection(headers);
+      for (i=0; i< headers->FileHeader.NumberOfSections; i++, section++) {
         if (section->SizeOfRawData == 0) {
             // section doesn't contain data in the dll itself, but may define
             // uninitialized data
