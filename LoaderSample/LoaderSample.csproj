@@ -54,6 +54,18 @@
       <Name>MemoryModule</Name>
     </ProjectReference>
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="libs\x86\" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\bin\release-x64\SampleDLL.dll">
+      <Link>libs\x64\SampleDLL.dll</Link>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\bin\release-x86\SampleDLL.dll">
+      <Link>libs\x86\SampleDLL.dll</Link>
+    </EmbeddedResource>
+
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

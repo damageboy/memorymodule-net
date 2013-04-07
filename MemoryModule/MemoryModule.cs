@@ -7,48 +7,86 @@ using System.Threading.Tasks;
 
 namespace MemoryModule
 {
-  public enum ArchType
+  public interface IModuleLoader
   {
-    x86,
-    x64,
-    ARM,
-  }
-  
-  public interface IModuleResolver
-  {
-    unsafe void *Load(string moduleName, string loaderModule, ArchType arch );
-    unsafe void Free(void *module);
+    void Load(string moduleName);
+    unsafe void* GetSymbolAddress(string symbol);
+    void Free();
   }
 
-
-  public class MemoryModule
+  public class MemoryModule : IModuleLoader
   {
     #region Global Loader/Resoolver State
     public static IList<IModuleResolver> DefaultResolverChain { get; set; }
     public static IList<MemoryModule> AllLoadedModules;
     #endregion
+      
+    public static IList<IModuleResolver> Resolvers { get; private set; }
+    public IList<MemoryModule> Modules { public get; set; }
 
+
+    object userData;
+    unsafe IMAGE_NT_HEADERS* headers;
 
     private unsafe byte* codeBase;
-    
-    private bool initialized;
-    public IList<MemoryModule> _modules { get; set; }
-    public static IList<IModuleResolver> _resolvers { get; set; }
-    
-    private object userData;
-    private unsafe IMAGE_NT_HEADERS* headers;
-
+    bool initialized;
     IModuleResolver _resolver;
+    unsafe void* _resolvedCode;
 
 
 
     public MemoryModule()
     {
-      _resolvers = DefaultResolverChain;
+      Resolvers = DefaultResolverChain;
     }
 
-    public static unsafe MemoryModule Load(byte* data, object userData)
+
+    public MemoryModule(IModuleResolver resolver)
     {
+      Resolvers = new List<IModuleResolver> { resolver };
+    }
+
+    public MemoryModule(IEnumerable<IModuleResolver> resolvers)
+    {
+      Resolvers = resolvers.ToList();
+    }
+
+    public unsafe void Load(string moduleName, string loaderName = null)
+    {
+      if (Resolve(moduleName))
+        Load(_resolvedCode);
+      else
+        throw new Exception("Failed to resolve " + moduleName);
+    }
+
+    public unsafe bool TryLoad(string moduleName, string loaderName = null)
+    {
+      if (Resolve(moduleName))
+        return TryLoad(_resolvedCode);
+      else
+        return false;
+    }
+
+
+    private unsafe bool Resolve(string moduleName, string loaderName = null)
+    {      
+      if (Resolvers == null || !Resolvers.Any())
+        return false;
+      foreach (var r in Resolvers)
+      {
+        var code = r.Load(moduleName, loaderName, GetCurrentArch());
+        if (code != null) {
+          _resolver = r;
+          _resolvedCode = code;
+          return true;
+        }
+      }
+      return false;
+    }
+
+    public unsafe MemoryModule Load(void* p)
+    {
+      byte* data = (byte*) p;
       var dos_header = (IMAGE_DOS_HEADER*)data;
       if (dos_header->e_magic != NativeConstants.IMAGE_DOS_SIGNATURE)
         throw new BadImageFormatException("Invalid DOS magic");
@@ -75,19 +113,17 @@ namespace MemoryModule
           throw new OutOfMemoryException("trying to virtual-alloc");
       }
       MemoryModule module;
-      try
-      {
+      try {
         module = new MemoryModule();
       }
-      catch
-      {
+      catch {
         Win32.VirtualFree(code, 0, Win32.MEM_RELEASE);
         throw;
       }
       try
       {
         module.codeBase = code;
-        module._modules = new List<MemoryModule>();
+        module.Modules = new List<MemoryModule>();
         module.initialized = false;
         module.userData = userData;
 
@@ -168,7 +204,7 @@ namespace MemoryModule
         IMAGE_BASE_RELOCATION *relocation = (IMAGE_BASE_RELOCATION *) (codeBase + directory->VirtualAddress);
         for (; relocation->VirtualAddress > 0; ) {
             byte *dest = codeBase + relocation->VirtualAddress;
-            ushort* relInfo = (ushort*)((byte*)relocation + NativeConstants.IMAGE_SIZEOF_BASE_RELOCATION);
+            var relInfo = (ushort*)((byte*)relocation + NativeConstants.IMAGE_SIZEOF_BASE_RELOCATION);
             for (var i = 0; i < ((relocation->SizeOfBlock - NativeConstants.IMAGE_SIZEOF_BASE_RELOCATION) / 2); i++, relInfo++)
             {
                 int *patchAddrHL;
@@ -216,32 +252,12 @@ namespace MemoryModule
 
     private unsafe MemoryModule LoadDependancy(string name, string loaderName, object userData)
     {
-      byte *code = null;
-      IModuleResolver lastResolver;
-      foreach (var r in _resolvers)
-      {
-        lastResolver = r;
-        if ((code = (byte*)r.Load(name, loaderName, GetCurrentArch())) != null)
-          break;
-      }
-
-      // If any resolver was successfull, we try to load the module internally
-      if (code != null)
-      {
-        var mm = new MemoryModule();
-        mm._resolver = lastResolver;
-        mm.Load(code);
-        return mm;
-      }
-      else
-      {
-        // Last attmept, let's try the system resolver
-        
-        // Wrap into an IModuleLoader
+      // First let's try the internal loader + resolver chain
+      var dep = new MemoryModule(Resolvers);
+      if (dep.TryLoad(name, loaderName);
 
         return new SystemModuleLoader(Win32.LoadLibrary(name));
-      }
-
+      
       throw new Exception("Failed to load the " + name + " module");
         
     }

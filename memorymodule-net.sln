@@ -1,6 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Express 2012 for Windows Desktop
+# Visual Studio 2012
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MemoryModule", "MemoryModule\MemoryModule.csproj", "{1A539DC3-7624-4D63-8906-AE9560596D3C}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SampleDLL", "SampleDLL\SampleDLL.vcxproj", "{475E46BF-5AD7-4721-9067-A18856CB8BF6}"
@@ -36,14 +36,16 @@ Global
 		{1A539DC3-7624-4D63-8906-AE9560596D3C}.Release|Mixed Platforms.Build.0 = Release|Any CPU
 		{1A539DC3-7624-4D63-8906-AE9560596D3C}.Release|x64.ActiveCfg = Release|Any CPU
 		{1A539DC3-7624-4D63-8906-AE9560596D3C}.Release|x86.ActiveCfg = Release|Any CPU
-		{475E46BF-5AD7-4721-9067-A18856CB8BF6}.Debug|Any CPU.ActiveCfg = Debug|Win32
+		{475E46BF-5AD7-4721-9067-A18856CB8BF6}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{475E46BF-5AD7-4721-9067-A18856CB8BF6}.Debug|Any CPU.Build.0 = Debug|x64
 		{475E46BF-5AD7-4721-9067-A18856CB8BF6}.Debug|Mixed Platforms.ActiveCfg = Debug|Win32
 		{475E46BF-5AD7-4721-9067-A18856CB8BF6}.Debug|Mixed Platforms.Build.0 = Debug|Win32
 		{475E46BF-5AD7-4721-9067-A18856CB8BF6}.Debug|x64.ActiveCfg = Debug|x64
 		{475E46BF-5AD7-4721-9067-A18856CB8BF6}.Debug|x64.Build.0 = Debug|x64
 		{475E46BF-5AD7-4721-9067-A18856CB8BF6}.Debug|x86.ActiveCfg = Debug|Win32
 		{475E46BF-5AD7-4721-9067-A18856CB8BF6}.Debug|x86.Build.0 = Debug|Win32
-		{475E46BF-5AD7-4721-9067-A18856CB8BF6}.Release|Any CPU.ActiveCfg = Release|Win32
+		{475E46BF-5AD7-4721-9067-A18856CB8BF6}.Release|Any CPU.ActiveCfg = Release|x64
+		{475E46BF-5AD7-4721-9067-A18856CB8BF6}.Release|Any CPU.Build.0 = Release|x64
 		{475E46BF-5AD7-4721-9067-A18856CB8BF6}.Release|Mixed Platforms.ActiveCfg = Release|Win32
 		{475E46BF-5AD7-4721-9067-A18856CB8BF6}.Release|Mixed Platforms.Build.0 = Release|Win32
 		{475E46BF-5AD7-4721-9067-A18856CB8BF6}.Release|x64.ActiveCfg = Release|Win32

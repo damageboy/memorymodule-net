@@ -29,6 +29,7 @@
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
@@ -41,6 +42,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="EmbeddedResourceResolver.cs" />
+    <Compile Include="IModuleResolver.cs" />
     <Compile Include="Mem.cs" />
     <Compile Include="MemoryModule.cs" />
     <Compile Include="ImageHeaders.cs" />
